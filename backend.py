@@ -84,10 +84,10 @@ class Settings(BaseSettings):
     DATABASE_URL: str
     REDIS_URL: str = "redis://localhost:6379/0"
 
-    AWS_ACCESS_KEY_ID: str
-    AWS_SECRET_ACCESS_KEY: str
+    AWS_ACCESS_KEY_ID: str = ""
+    AWS_SECRET_ACCESS_KEY: str = ""
     AWS_REGION: str = "ap-south-1"
-    S3_BUCKET_NAME: str
+    S3_BUCKET_NAME: str = ""
 
     GEMINI_API_KEY: str
 
@@ -300,15 +300,8 @@ def verify_wallet_signature(wallet_address: str, message: str, signature: str) -
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# AWS S3
+# LOCAL FILE STORAGE (S3 not used — kept off for dev/demo to avoid AWS dependency)
 # ══════════════════════════════════════════════════════════════════════════════
-
-s3_client = boto3.client(
-    "s3",
-    aws_access_key_id=settings.AWS_ACCESS_KEY_ID,
-    aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY,
-    region_name=settings.AWS_REGION,
-)
 
 LOCAL_UPLOAD_DIR = "uploads"
 os.makedirs(LOCAL_UPLOAD_DIR, exist_ok=True)
