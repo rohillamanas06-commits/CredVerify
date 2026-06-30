@@ -5,4 +5,4 @@
 FastAPI backend for issuing, verifying, and managing digital credentials using blockchain technology and AI-powered fraud detection.
 
 
-**Built with ❤️ by Manas Rohilla**
+**Made with ❤️ by Manas Rohilla**
