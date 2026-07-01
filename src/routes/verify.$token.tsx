@@ -2,7 +2,6 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
 import { VerifyResult } from "@/components/VerifyResult";
-import { Footer } from "@/components/Footer";
 
 export default PublicVerify;
 
@@ -22,9 +21,9 @@ function PublicVerify() {
   return (
     <div className="min-h-screen flex flex-col bg-background">
       <header className="bg-black text-white">
-        <div className="container-tight h-14 flex items-center justify-between">
+        <div className="w-full px-4 md:px-8 h-14 flex items-center justify-between">
           <Link to="/" className="font-display flex items-center gap-2">
-            <span className="h-2 w-2 rounded-full bg-[color:var(--gold)]" /> CredChain
+            CredChain
           </Link>
           <span className="text-xs text-white/50 uppercase tracking-wider">Public verification</span>
         </div>
@@ -37,15 +36,13 @@ function PublicVerify() {
         </p>
 
         {err && (
-          <div className="border border-destructive/30 bg-destructive/10 text-destructive rounded-lg p-6">
+          <div className="text-sm text-red-400 bg-red-500/10 border border-red-500/20 p-3 rounded-md mb-8">
             {err}
           </div>
         )}
         {!err && !data && <div className="text-muted-foreground">Verifying…</div>}
         {data && <VerifyResult data={data} />}
       </main>
-
-      <Footer />
     </div>
   );
 }

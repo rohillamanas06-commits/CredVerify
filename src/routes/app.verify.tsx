@@ -2,6 +2,7 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import { useState } from "react";
 import { api } from "@/lib/api";
 import { VerifyResult } from "@/components/VerifyResult";
+import { Loader2 } from "lucide-react";
 
 export default VerifyPage;
 
@@ -70,8 +71,9 @@ function VerifyPage() {
             className="w-full bg-background border border-border rounded-md px-3 py-2.5 text-sm font-mono focus:outline-none focus:border-foreground"
           />
         )}
-        {err && <p className="text-sm text-destructive">{err}</p>}
-        <button disabled={loading} className="bg-foreground text-background px-4 py-2.5 rounded-md text-sm font-medium disabled:opacity-50">
+        {err && <div className="text-sm text-red-400 bg-red-500/10 border border-red-500/20 p-3 rounded-md mb-4">{err}</div>}
+        <button disabled={loading} className="bg-foreground text-background px-4 py-2.5 rounded-md text-sm font-medium disabled:opacity-50 flex items-center justify-center gap-2">
+          {loading && <Loader2 className="h-4 w-4 animate-spin" />}
           {loading ? "Verifying…" : "Verify"}
         </button>
       </form>

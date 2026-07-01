@@ -1,10 +1,10 @@
 export function VerifyResult({ data }: { data: any }) {
   const result: string = data.result ?? "unknown";
   const colors: Record<string, string> = {
-    verified: "bg-emerald-500/10 text-emerald-700 border-emerald-500/30",
-    flagged: "bg-yellow-500/10 text-yellow-700 border-yellow-500/30",
-    mismatch: "bg-destructive/10 text-destructive border-destructive/30",
-    pending: "bg-muted text-muted-foreground border-border",
+    verified: "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30",
+    flagged: "bg-yellow-500/20 text-yellow-400 border border-yellow-500/30",
+    mismatch: "bg-red-500/20 text-red-400 border border-red-500/30",
+    pending: "bg-white/10 text-white/70 border border-white/20",
   };
   const cls = colors[result] ?? colors.pending;
   const cred = data.credential;

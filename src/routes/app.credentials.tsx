@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
 import { useAuth } from "@/hooks/use-auth";
 import { StatusBadge } from "./app.index";
+import { Loader2 } from "lucide-react";
 
 export default CredentialsPage;
 
@@ -11,15 +12,18 @@ function CredentialsPage() {
   const [items, setItems] = useState<any[]>([]);
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
 
   function load() {
     if (!user) return;
+    setIsLoading(true);
     if (user.role === "employer") {
       setItems([]);
+      setIsLoading(false);
       return;
     }
     const p = user.role === "institution" ? api.get("/credentials/issued").then(r => r.data) : api.get("/credentials/mine").then(r => r.data);
-    p.then(setItems).catch((e) => setErr(e.message));
+    p.then(setItems).catch((e) => setErr(e.message)).finally(() => setIsLoading(false));
   }
   useEffect(load, [user]);
 
@@ -49,6 +53,14 @@ function CredentialsPage() {
     } catch (e: any) { alert(e.message); }
   }
 
+  if (isLoading) {
+    return (
+      <div className="flex h-[50vh] items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       <div>
@@ -58,7 +70,7 @@ function CredentialsPage() {
         </p>
       </div>
 
-      {err && <div className="text-sm text-destructive">{err}</div>}
+      {err && <div className="text-sm text-red-400 bg-red-500/10 border border-red-500/20 p-3 rounded-md">{err}</div>}
 
       {items.length === 0 ? (
         <div className="border rounded-lg p-12 text-center bg-card">
@@ -112,8 +124,8 @@ function CredentialsPage() {
       <style>{`
         .btn-sec { border:1px solid var(--border); padding:6px 12px; border-radius:6px; font-size:13px; }
         .btn-sec:hover { background: var(--muted); }
-        .btn-danger { border:1px solid var(--destructive); color: var(--destructive); padding:6px 12px; border-radius:6px; font-size:13px; }
-        .btn-danger:hover { background: color-mix(in oklab, var(--destructive) 10%, transparent); }
+        .btn-danger { border:1px solid rgba(239, 68, 68, 0.3); background: rgba(239, 68, 68, 0.1); color: #f87171; padding:6px 12px; border-radius:6px; font-size:13px; font-weight: 500; transition: background-color 0.2s; }
+        .btn-danger:hover { background: rgba(239, 68, 68, 0.2); }
       `}</style>
     </div>
   );

@@ -1,15 +1,18 @@
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
+import { Loader2 } from "lucide-react";
 
 export default SharePage;
 
 function SharePage() {
   const [links, setLinks] = useState<any[]>([]);
   const [err, setErr] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
 
   function load() {
-    api.get("/share-links/mine").then(r => r.data).then(setLinks).catch((e) => setErr(e.message));
+    setIsLoading(true);
+    api.get("/share-links/mine").then(r => r.data).then(setLinks).catch((e) => setErr(e.message)).finally(() => setIsLoading(false));
   }
   useEffect(load, []);
 
@@ -17,6 +20,14 @@ function SharePage() {
     if (!confirm("Deactivate this link?")) return;
     await api.delete(`/share-links/${token}`);
     load();
+  }
+
+  if (isLoading) {
+    return (
+      <div className="flex h-[50vh] items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      </div>
+    );
   }
 
   return (
@@ -28,7 +39,7 @@ function SharePage() {
         </p>
       </div>
 
-      {err && <div className="text-sm text-destructive">{err}</div>}
+      {err && <div className="text-sm text-red-400 bg-red-500/10 border border-red-500/20 p-3 rounded-md">{err}</div>}
 
       {links.length === 0 ? (
         <div className="border rounded-lg p-12 text-center bg-card text-sm text-muted-foreground">
@@ -68,7 +79,8 @@ function SharePage() {
       <style>{`
         .btn-sec { border:1px solid var(--border); padding:6px 12px; border-radius:6px; font-size:13px; }
         .btn-sec:hover { background: var(--muted); }
-        .btn-danger { border:1px solid var(--destructive); color: var(--destructive); padding:6px 12px; border-radius:6px; font-size:13px; }
+        .btn-danger { border:1px solid rgba(239, 68, 68, 0.3); background: rgba(239, 68, 68, 0.1); color: #f87171; padding:6px 12px; border-radius:6px; font-size:13px; font-weight: 500; transition: background-color 0.2s; }
+        .btn-danger:hover { background: rgba(239, 68, 68, 0.2); }
       `}</style>
     </div>
   );

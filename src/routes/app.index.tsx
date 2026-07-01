@@ -2,6 +2,7 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
 import { useAuth } from "@/hooks/use-auth";
+import { Loader2 } from "lucide-react";
 
 export default Overview;
 
@@ -10,12 +11,15 @@ function Overview() {
   const [stats, setStats] = useState<{ total: number; verified: number; flagged: number } | null>(null);
   const [recent, setRecent] = useState<any[]>([]);
   const [err, setErr] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
     if (!user) return;
+    setIsLoading(true);
     if (user.role === "employer") {
       setRecent([]);
       setStats({ total: 0, verified: 0, flagged: 0 });
+      setIsLoading(false);
       return;
     }
     const loader =
@@ -29,8 +33,17 @@ function Overview() {
           flagged: list.filter((c: any) => c.ai_fraud_flag).length,
         });
       })
-      .catch((e) => setErr(e.message));
+      .catch((e) => setErr(e.message))
+      .finally(() => setIsLoading(false));
   }, [user]);
+
+  if (isLoading) {
+    return (
+      <div className="flex h-[50vh] items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-8">
@@ -47,7 +60,7 @@ function Overview() {
         </p>
       </div>
 
-      {err && <div className="text-sm text-destructive">{err}</div>}
+      {err && <div className="text-sm text-red-400 bg-red-500/10 border border-red-500/20 p-3 rounded-md">{err}</div>}
 
       {user?.role !== "employer" && (
         <div className="grid grid-cols-3 gap-4">
@@ -114,12 +127,12 @@ export function StatusBadge({ cred }: { cred: any }) {
   const flagged = cred.ai_fraud_flag;
   const onChain = cred.on_chain;
   const cls = revoked
-    ? "bg-destructive/10 text-destructive"
+    ? "bg-red-500/20 text-red-400 border border-red-500/30"
     : flagged
-    ? "bg-yellow-500/10 text-yellow-700"
+    ? "bg-yellow-500/20 text-yellow-400 border border-yellow-500/30"
     : onChain
-    ? "bg-emerald-500/10 text-emerald-700"
-    : "bg-muted text-muted-foreground";
+    ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30"
+    : "bg-white/10 text-white/70 border border-white/20";
   const label = revoked ? "Revoked" : flagged ? "Flagged" : onChain ? "On-chain" : "Pending";
-  return <span className={`text-xs px-2 py-1 rounded-full ${cls}`}>{label}</span>;
+  return <span className={`text-xs font-medium px-2.5 py-0.5 rounded-full ${cls}`}>{label}</span>;
 }

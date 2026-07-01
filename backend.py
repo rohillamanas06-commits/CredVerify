@@ -100,9 +100,7 @@ def _async_database_url(database_url: str) -> str:
     url = make_url(database_url)
     if url.drivername in ("postgresql", "postgres"):
         url = url.set(drivername="postgresql+asyncpg")
-    # Strip ALL query params — SSL passed via connect_args instead
-    url = url.set(query={})
-    return str(url)
+    return url.render_as_string(hide_password=False)
 
 # ══════════════════════════════════════════════════════════════════════════════
 # DATABASE
@@ -112,7 +110,6 @@ engine = create_async_engine(
     echo=settings.APP_ENV == "development",
     pool_size=10,
     max_overflow=20,
-    connect_args={"ssl": "require"} if "neon.tech" in settings.DATABASE_URL else {},
 )
 AsyncSessionLocal = async_sessionmaker(bind=engine, class_=AsyncSession, expire_on_commit=False)
 class Base(DeclarativeBase):
@@ -832,10 +829,21 @@ class VerificationResponse(BaseModel):
 # FASTAPI APP
 # ══════════════════════════════════════════════════════════════════════════════
 
+from contextlib import asynccontextmanager
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    print("Database tables created")
+    print(f"Blockchain connected: {w3.is_connected()}")
+    yield
+
 app = FastAPI(
     title="CredVerify API",
     description="AI + Blockchain Credential Verification System",
     version="1.0.0",
+    lifespan=lifespan,
 )
 
 app.add_middleware(
@@ -848,14 +856,6 @@ app.add_middleware(
 
 from fastapi.staticfiles import StaticFiles
 app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
-
-
-@app.on_event("startup")
-async def startup():
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-    print("Database tables created")
-    print(f"Blockchain connected: {w3.is_connected()}")
 
 
 # ══════════════════════════════════════════════════════════════════════════════

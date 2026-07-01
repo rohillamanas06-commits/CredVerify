@@ -1,6 +1,7 @@
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useState } from "react";
 import { api } from "@/lib/api";
+import { Loader2 } from "lucide-react";
 
 export default IssuePage;
 
@@ -74,9 +75,10 @@ function IssuePage() {
           <input type="file" accept="image/*,.pdf" onChange={(e) => setFile(e.target.files?.[0] ?? null)} className="input" />
         </Field>
 
-        {err && <p className="text-sm text-destructive">{err}</p>}
+        {err && <div className="text-sm text-red-400 bg-red-500/10 border border-red-500/20 p-3 rounded-md">{err}</div>}
 
-        <button disabled={loading} className="btn-primary">
+        <button disabled={loading} className="btn-primary flex items-center justify-center gap-2">
+          {loading && <Loader2 className="h-4 w-4 animate-spin" />}
           {loading ? "Issuing…" : "Issue credential"}
         </button>
       </form>
@@ -90,7 +92,7 @@ function IssuePage() {
             <p className="text-sm">AI confidence: <strong>{Math.round(result.ai_confidence * 100)}%</strong></p>
           )}
           {result.ai_fraud_flag && (
-            <div className="text-sm text-yellow-700 bg-yellow-500/10 p-3 rounded space-y-2">
+            <div className="text-sm text-yellow-400 bg-yellow-500/20 border border-yellow-500/30 p-3 rounded space-y-2">
               <p className="font-medium">⚠ Fraud indicators detected</p>
               {result.analysis_layers ? (
                 <div className="space-y-1 text-xs">
