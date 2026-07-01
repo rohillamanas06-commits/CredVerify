@@ -51,22 +51,20 @@ function Register() {
               <button
                 type="button"
                 onClick={() => setRole("candidate")}
-                className={`py-2 rounded-md text-sm border transition ${
-                  role === "candidate"
+                className={`py-2 rounded-md text-sm border transition ${role === "candidate"
                     ? "bg-white text-black border-white"
                     : "border-white/15 text-white/70 hover:bg-white/5"
-                }`}
+                  }`}
               >
                 Candidate
               </button>
               <button
                 type="button"
                 onClick={() => setRole("employer")}
-                className={`py-2 rounded-md text-sm border transition ${
-                  role === "employer"
+                className={`py-2 rounded-md text-sm border transition ${role === "employer"
                     ? "bg-white text-black border-white"
                     : "border-white/15 text-white/70 hover:bg-white/5"
-                }`}
+                  }`}
               >
                 Employer
               </button>
