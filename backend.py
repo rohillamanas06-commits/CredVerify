@@ -306,7 +306,8 @@ async def save_file_locally(file_bytes: bytes, key: str, content_type: str) -> s
 def get_file_url(key: str) -> str:
     """Return a URL to access a locally stored file."""
     safe_key = key.replace("/", "_")
-    return f"http://localhost:8000/uploads/{safe_key}"
+    base_url = "https://credverify.onrender.com" if settings.APP_ENV == "production" else "http://localhost:8000"
+    return f"{base_url}/uploads/{safe_key}"
 
 
 
@@ -1204,7 +1205,8 @@ async def get_document_url(
         raise HTTPException(404, "Credential not found.")
 
     user_id = uuid.UUID(current_user["sub"])
-    if current_user["role"] not in ("institution",) and cred.candidate_id != user_id:
+    if (current_user["role"] == "institution" and cred.institution_id != user_id) or \
+       (current_user["role"] != "institution" and cred.candidate_id != user_id):
         raise HTTPException(403, "Not authorized to access this document.")
 
     url = get_file_url(cred.file_key)
