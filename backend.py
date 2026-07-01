@@ -1325,18 +1325,12 @@ async def verify_by_link(
     # Increment access count
     link.access_count += 1
 
-    # Get credential
-    cred_result = await db.execute(
-        select(Credential, User, User)
-        .join(User, Credential.institution_id == User.id)
-        .where(Credential.id == link.credential_id)
-    )
-    row = cred_result.first()
-    if not row:
+    cred = await db.get(Credential, link.credential_id)
+    if not cred:
         raise HTTPException(404, "Credential not found.")
 
-    cred = row[0]
-    institution = row[1]
+    institution = await db.get(User, cred.institution_id)
+    candidate = await db.get(User, cred.candidate_id)
 
     verification = await _run_verification(cred, db)
 
@@ -1354,7 +1348,7 @@ async def verify_by_link(
 
     return {
         **verification,
-        "credential": _format_credential(cred, institution),
+        "credential": _format_credential(cred, institution, candidate),
     }
 
 
@@ -1372,14 +1366,10 @@ async def verify_by_hash(
     if cached:
         return {**cached, "cached": True}
 
-    result = await db.execute(
-        select(Credential, User)
-        .join(User, Credential.institution_id == User.id)
-        .where(Credential.document_hash == document_hash)
-    )
-    row = result.first()
+    result = await db.execute(select(Credential).where(Credential.document_hash == document_hash))
+    cred = result.scalar_one_or_none()
 
-    if not row:
+    if not cred:
         # Still check chain — credential might exist on-chain without DB record
         chain = blockchain_verify_credential(document_hash)
         return {
@@ -1390,7 +1380,8 @@ async def verify_by_hash(
             "verified_at": datetime.utcnow(),
         }
 
-    cred, institution = row
+    institution = await db.get(User, cred.institution_id)
+    candidate = await db.get(User, cred.candidate_id)
     verification = await _run_verification(cred, db)
 
     # Cache result
@@ -1407,7 +1398,7 @@ async def verify_by_hash(
 
     return {
         **verification,
-        "credential": _format_credential(cred, institution),
+        "credential": _format_credential(cred, institution, candidate),
     }
 
 
@@ -1428,15 +1419,10 @@ async def verify_by_file(
 
     file_hash = compute_sha256(file_bytes)
 
-    # Look up by file_hash (raw file bytes hash)
-    result = await db.execute(
-        select(Credential, User)
-        .join(User, Credential.institution_id == User.id)
-        .where(Credential.file_hash == file_hash)
-    )
-    row = result.first()
+    result = await db.execute(select(Credential).where(Credential.file_hash == file_hash))
+    cred = result.scalar_one_or_none()
 
-    if not row:
+    if not cred:
         return {
             "result": "mismatch",
             "chain_match": False,
@@ -1446,7 +1432,8 @@ async def verify_by_file(
             "note": "No credential found matching this file.",
         }
 
-    cred, institution = row
+    institution = await db.get(User, cred.institution_id)
+    candidate = await db.get(User, cred.candidate_id)
     verification = await _run_verification(cred, db)
 
     log = VerificationLog(
@@ -1460,7 +1447,7 @@ async def verify_by_file(
 
     return {
         **verification,
-        "credential": _format_credential(cred, institution),
+        "credential": _format_credential(cred, institution, candidate),
     }
 
 

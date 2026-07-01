@@ -56,7 +56,7 @@ function SharePage() {
                   <div className="text-xs text-muted-foreground mt-1">
                     Accessed {l.access_count} time(s)
                     {l.max_access ? ` · Max ${l.max_access}` : ""}
-                    {l.expires_at ? ` · Expires ${new Date(l.expires_at).toLocaleString()}` : ""}
+                    {l.expires_at ? ` · Expires ${new Date(l.expires_at + "Z").toLocaleString()}` : ""}
                   </div>
                 </div>
                 <div className="flex gap-2">
