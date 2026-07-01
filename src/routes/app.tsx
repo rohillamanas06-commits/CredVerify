@@ -85,9 +85,9 @@ function AppLayout() {
 
       <div className="flex-1 flex flex-col md:flex-row w-full">
         <aside 
-          className={`border-border bg-muted/10 shrink-0 transition-all duration-300 ease-in-out overflow-hidden md:sticky md:top-14 md:h-[calc(100vh-3.5rem)] ${
+          className={`border-border bg-background shrink-0 transition-all duration-300 ease-in-out overflow-hidden z-30 fixed md:sticky top-14 h-[calc(100vh-3.5rem)] ${
             isSidebarOpen 
-              ? "w-full md:w-64 border-b md:border-b-0 md:border-r opacity-100" 
+              ? "w-64 border-r opacity-100 shadow-2xl md:shadow-none" 
               : "w-0 border-none opacity-0"
           }`}
         >
