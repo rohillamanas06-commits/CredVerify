@@ -6,8 +6,14 @@ const IMAGES = [img1, img2];
 
 export function AuthCarousel() {
   const [i, setI] = useState(0);
+  const [prev, setPrev] = useState(-1);
   useEffect(() => {
-    const t = setInterval(() => setI((p) => (p + 1) % IMAGES.length), 3000);
+    const t = setInterval(() => {
+      setI((p) => {
+        setPrev(p);
+        return (p + 1) % IMAGES.length;
+      });
+    }, 5000);
     return () => clearInterval(t);
   }, []);
   return (
@@ -18,8 +24,8 @@ export function AuthCarousel() {
           src={src}
           alt=""
           className={`absolute inset-0 h-full w-full object-cover transition-opacity duration-[1200ms] ${
-            i === idx ? "opacity-100 animate-ken-burns" : "opacity-0"
-          }`}
+            i === idx || prev === idx ? "animate-ken-burns" : ""
+          } ${i === idx ? "opacity-100" : "opacity-0"}`}
         />
       ))}
       {/* Auth carousel images only */}

@@ -8,6 +8,7 @@ import Issue from "./routes/app.issue";
 import Share from "./routes/app.share";
 import Verify from "./routes/app.verify";
 import VerifyToken from "./routes/verify.$token";
+import StaticPage from "./routes/page";
 import AppLayout from "./routes/app";
 
 import { Toaster } from "@/components/ui/sonner";
@@ -24,6 +25,7 @@ export default function App() {
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
           <Route path="/verify/:token" element={<VerifyToken />} />
+          <Route path="/page/:pageId" element={<StaticPage />} />
           
           <Route path="/app" element={<AppLayout />}>
             <Route index element={<AppIndex />} />

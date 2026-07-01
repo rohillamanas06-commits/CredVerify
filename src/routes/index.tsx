@@ -7,9 +7,9 @@ export default Home;
 
 function Home() {
   return (
-    <div className="min-h-screen flex flex-col bg-black text-white">
+    <div className="min-h-screen bg-black text-white">
       <Navbar />
-      <main className="relative flex-1 overflow-hidden">
+      <main className="relative h-[calc(100vh-3.5rem)] w-full overflow-hidden">
         <img
           src={hero}
           alt="Holographic verified credential floating in a blockchain network"
@@ -17,6 +17,7 @@ function Home() {
         />
         {/* Hero image only */}
       </main>
+      <Footer />
     </div>
   );
 }
