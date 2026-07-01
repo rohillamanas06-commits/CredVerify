@@ -58,7 +58,7 @@ import google.generativeai as genai
 
 # ── Blockchain ─────────────────────────────────────────────────────────────────
 from web3 import Web3
-from web3.middleware.proof_of_authority import ExtraDataToPOAMiddleware as geth_poa_middleware
+from web3.middleware import geth_poa_middleware
 
 # ── Redis ──────────────────────────────────────────────────────────────────────
 import redis.asyncio as aioredis
@@ -442,7 +442,10 @@ ISSUER_REGISTRY_ABI = [
         "type": "function",
     },
     {
-        "inputs": [{"internalType": "address", "name": "issuer", "type": "address"}],
+        "inputs": [
+            {"internalType": "address", "name": "issuer", "type": "address"},
+            {"internalType": "string", "name": "name", "type": "string"}
+        ],
         "name": "registerIssuer",
         "outputs": [],
         "stateMutability": "nonpayable",
@@ -558,14 +561,21 @@ VERIFY_CACHE_TTL = 300  # 5 minutes
 
 
 async def cache_verification_result(doc_hash: str, result: dict):
-    r = await get_redis()
-    await r.setex(f"verify:{doc_hash}", VERIFY_CACHE_TTL, json.dumps(result))
+    try:
+        r = await get_redis()
+        await r.setex(f"verify:{doc_hash}", VERIFY_CACHE_TTL, json.dumps(result))
+    except Exception as e:
+        print(f"Redis cache error (set): {e}")
 
 
 async def get_cached_verification(doc_hash: str) -> Optional[dict]:
-    r = await get_redis()
-    cached = await r.get(f"verify:{doc_hash}")
-    return json.loads(cached) if cached else None
+    try:
+        r = await get_redis()
+        cached = await r.get(f"verify:{doc_hash}")
+        return json.loads(cached) if cached else None
+    except Exception as e:
+        print(f"Redis cache error (get): {e}")
+        return None
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -682,8 +692,8 @@ app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
 async def startup():
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
-    print("✅ Database tables created")
-    print(f"✅ Blockchain connected: {w3.is_connected()}")
+    print("Database tables created")
+    print(f"Blockchain connected: {w3.is_connected()}")
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -738,7 +748,18 @@ async def wallet_login(body: WalletLoginRequest, db: AsyncSession = Depends(get_
 
     # Check if wallet is a registered issuer on-chain
     if not blockchain_is_registered_issuer(body.wallet_address):
-        raise HTTPException(403, "Wallet is not a registered issuer on-chain.")
+        if settings.APP_ENV == "development":
+            # Auto-register on local network for easy testing
+            try:
+                fn = issuer_contract.functions.registerIssuer(
+                    Web3.to_checksum_address(body.wallet_address),
+                    f"Auto-registered {body.wallet_address[:8]}"
+                )
+                _send_transaction(fn)
+            except Exception as e:
+                raise HTTPException(403, f"Auto-registration failed: {e}")
+        else:
+            raise HTTPException(403, "Wallet is not a registered issuer on-chain.")
 
     result = await db.execute(select(User).where(User.wallet_address == body.wallet_address.lower()))
     user = result.scalar_one_or_none()
@@ -1048,7 +1069,7 @@ async def deactivate_share_link(
 # ROUTES — VERIFICATION (PUBLIC)
 # ══════════════════════════════════════════════════════════════════════════════
 
-@app.get("/verify/link/{token}", tags=["Verify"])
+@app.get("/verify/link/{token:path}", tags=["Verify"])
 async def verify_by_link(
     token: str,
     request: Request,
@@ -1104,7 +1125,7 @@ async def verify_by_link(
     }
 
 
-@app.get("/verify/hash/{document_hash}", tags=["Verify"])
+@app.get("/verify/hash/{document_hash:path}", tags=["Verify"])
 async def verify_by_hash(
     document_hash: str,
     request: Request,

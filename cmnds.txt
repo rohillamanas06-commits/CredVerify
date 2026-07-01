@@ -1,3 +1,5 @@
- cd verifex-contracts
+cd verifex-contracts
 npx hardhat node
- python backend.py
+
+
+& c:\users\manas\appdata\local\programs\python\python311\python.exe c:\Users\manas\Downloads\projects\CredChain\backend.py
