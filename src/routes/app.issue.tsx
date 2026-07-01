@@ -90,8 +90,23 @@ function IssuePage() {
             <p className="text-sm">AI confidence: <strong>{Math.round(result.ai_confidence * 100)}%</strong></p>
           )}
           {result.ai_fraud_flag && (
-            <div className="text-sm text-yellow-700 bg-yellow-500/10 p-3 rounded">
-              ⚠ Fraud indicators detected: {(result.fraud_indicators ?? []).join(", ") || "see AI notes"}
+            <div className="text-sm text-yellow-700 bg-yellow-500/10 p-3 rounded space-y-2">
+              <p className="font-medium">⚠ Fraud indicators detected</p>
+              {result.analysis_layers ? (
+                <div className="space-y-1 text-xs">
+                  {result.analysis_layers.metadata?.length > 0 && (
+                    <div><strong>Metadata:</strong> {result.analysis_layers.metadata.join("; ")}</div>
+                  )}
+                  {result.analysis_layers.structural?.length > 0 && (
+                    <div><strong>Structural:</strong> {result.analysis_layers.structural.join("; ")}</div>
+                  )}
+                  {result.analysis_layers.visual_ai?.length > 0 && (
+                    <div><strong>Visual AI:</strong> {result.analysis_layers.visual_ai.join("; ")}</div>
+                  )}
+                </div>
+              ) : (
+                <p>{(result.fraud_indicators ?? []).join(", ") || "see AI notes"}</p>
+              )}
             </div>
           )}
           <p className="text-xs text-muted-foreground">{result.on_chain_status}</p>

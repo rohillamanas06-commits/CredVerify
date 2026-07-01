@@ -6,7 +6,7 @@ Stack:
   - FastAPI + SQLAlchemy (async) + PostgreSQL
   - Gemini AI (document parsing + fraud detection)
   - Polygon blockchain (Web3.py)
-  - AWS S3 (document storage)
+  - Local file storage (uploads/)
   - Redis (verification result cache)
   - JWT auth (candidates/employers) + Wallet signature auth (institutions)
 """
@@ -49,9 +49,6 @@ from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
 from sqlalchemy.orm import DeclarativeBase, relationship
 
-# ── AWS S3 ─────────────────────────────────────────────────────────────────────
-import boto3
-from botocore.exceptions import ClientError
 
 # ── Gemini AI ──────────────────────────────────────────────────────────────────
 import google.generativeai as genai
@@ -80,14 +77,12 @@ class Settings(BaseSettings):
     SECRET_KEY: str
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
+    ADMIN_SECRET: str = ""
 
     DATABASE_URL: str
     REDIS_URL: str = "redis://localhost:6379/0"
 
-    AWS_ACCESS_KEY_ID: str = ""
-    AWS_SECRET_ACCESS_KEY: str = ""
-    AWS_REGION: str = "ap-south-1"
-    S3_BUCKET_NAME: str = ""
+
 
     GEMINI_API_KEY: str
 
@@ -113,17 +108,11 @@ def _async_database_url(database_url: str) -> str:
 # DATABASE
 # ══════════════════════════════════════════════════════════════════════════════
 engine = create_async_engine(
-    "postgresql+asyncpg://",
+    _async_database_url(settings.DATABASE_URL),
     echo=settings.APP_ENV == "development",
     pool_size=10,
     max_overflow=20,
-    connect_args={
-        "host": "ep-late-flower-ap1jp7o1-pooler.c-7.us-east-1.aws.neon.tech",
-        "database": "neondb",
-        "user": "neondb_owner",
-        "password": "npg_7jYM0KNRhoOP",
-        "ssl": "require",
-    },
+    connect_args={"ssl": "require"} if "neon.tech" in settings.DATABASE_URL else {},
 )
 AsyncSessionLocal = async_sessionmaker(bind=engine, class_=AsyncSession, expire_on_commit=False)
 class Base(DeclarativeBase):
@@ -178,9 +167,10 @@ class Credential(Base):
     title = Column(String(255), nullable=False)
     issue_date = Column(DateTime, nullable=False)
     expiry_date = Column(DateTime, nullable=True)
-    s3_key = Column(String(500), nullable=False)
-    s3_url = Column(String(1000), nullable=True)
-    document_hash = Column(String(64), nullable=False, index=True)
+    file_key = Column(String(500), nullable=False)
+    file_url = Column(String(1000), nullable=True)
+    document_hash = Column(String(64), nullable=False, index=True)  # canonical credential hash
+    file_hash = Column(String(64), nullable=True, index=True)        # raw file SHA-256 for dedup
     tx_hash = Column(String(66), nullable=True)
     block_number = Column(Integer, nullable=True)
     on_chain = Column(Boolean, default=False)
@@ -300,27 +290,54 @@ def verify_wallet_signature(wallet_address: str, message: str, signature: str) -
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# LOCAL FILE STORAGE (S3 not used — kept off for dev/demo to avoid AWS dependency)
+# LOCAL FILE STORAGE
 # ══════════════════════════════════════════════════════════════════════════════
 
 LOCAL_UPLOAD_DIR = "uploads"
 os.makedirs(LOCAL_UPLOAD_DIR, exist_ok=True)
 
-async def upload_to_s3(file_bytes: bytes, key: str, content_type: str) -> str:
+
+async def save_file_locally(file_bytes: bytes, key: str, content_type: str) -> str:
+    """Save uploaded file to local uploads/ directory."""
     safe_key = key.replace("/", "_")
     path = os.path.join(LOCAL_UPLOAD_DIR, safe_key)
     with open(path, "wb") as f:
         f.write(file_bytes)
     return key
 
-def get_presigned_url(key: str, expires_in: int = 3600) -> str:
+
+def get_file_url(key: str) -> str:
+    """Return a URL to access a locally stored file."""
     safe_key = key.replace("/", "_")
     return f"http://localhost:8000/uploads/{safe_key}"
 
 
 
 def compute_sha256(file_bytes: bytes) -> str:
+    """Hash raw file bytes — used for storage deduplication only."""
     return hashlib.sha256(file_bytes).hexdigest()
+
+
+def compute_credential_hash(
+    holder_name: str,
+    institution_name: str,
+    credential_type: str,
+    title: str,
+    issue_date: str,
+) -> str:
+    """
+    Canonical credential hash — used for on-chain anchoring and verification.
+    Deterministic: same semantic data always produces the same hash,
+    regardless of PDF formatting or compression.
+    """
+    canonical = json.dumps({
+        "holder_name": holder_name.strip().lower(),
+        "institution_name": institution_name.strip().lower(),
+        "credential_type": credential_type.strip().lower(),
+        "title": title.strip().lower(),
+        "issue_date": issue_date.strip(),
+    }, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -331,16 +348,105 @@ genai.configure(api_key=settings.GEMINI_API_KEY)
 gemini_model = genai.GenerativeModel("gemini-1.5-flash-latest")
 
 
-async def ai_analyze_document(file_bytes: bytes, mime_type: str) -> dict:
+# ── Layer 1: Metadata analysis (no external dependencies) ─────────────────────
+
+# Common file signatures (magic bytes)
+_FILE_SIGNATURES = {
+    b"%PDF": "application/pdf",
+    b"\x89PNG": "image/png",
+    b"\xff\xd8\xff": "image/jpeg",
+    b"GIF8": "image/gif",
+}
+
+# Editing tools that indicate the document may have been modified
+_SUSPICIOUS_PRODUCERS = [
+    b"photoshop", b"gimp", b"illustrator", b"inkscape",
+    b"canva", b"paint.net", b"pixlr", b"affinity",
+]
+
+
+def _analyze_metadata(file_bytes: bytes, mime_type: str) -> list[str]:
     """
-    Send document to Gemini for:
-    1. Entity extraction (name, institution, date, credential type)
-    2. Fraud detection (inconsistencies, edit artifacts)
-    3. Confidence score
-    Returns a dict with extracted_data, fraud_flag, confidence
+    Layer 1: Check file metadata for signs of tampering.
+    - Magic byte vs declared MIME type mismatch
+    - PDF producer/creator strings from editing tools
+    """
+    indicators = []
+
+    # Check magic bytes vs declared MIME type
+    detected_type = None
+    for sig, mtype in _FILE_SIGNATURES.items():
+        if file_bytes[:len(sig)] == sig:
+            detected_type = mtype
+            break
+
+    if detected_type and mime_type and detected_type != mime_type:
+        indicators.append(
+            f"File signature mismatch: file header indicates {detected_type}, "
+            f"but declared as {mime_type}"
+        )
+
+    # For PDFs, scan for producer/creator tool strings
+    if file_bytes[:4] == b"%PDF":
+        # Only scan first 4KB for performance (metadata is near the top)
+        header_region = file_bytes[:4096].lower()
+        for tool in _SUSPICIOUS_PRODUCERS:
+            if tool in header_region:
+                indicators.append(
+                    f"PDF producer/creator contains '{tool.decode()}' — "
+                    f"document may have been visually edited"
+                )
+
+    return indicators
+
+
+# ── Layer 2: Structural PDF analysis ──────────────────────────────────────────
+
+def _analyze_pdf_structure(file_bytes: bytes) -> list[str]:
+    """
+    Layer 2: Scan raw PDF bytes for structural anomalies.
+    No heavy PDF library required — pattern matching on raw bytes.
+    """
+    indicators = []
+    content = file_bytes  # scan full content
+
+    # Check for embedded JavaScript (common in malicious PDFs)
+    if b"/JavaScript" in content or b"/JS " in content:
+        indicators.append("PDF contains embedded JavaScript — unusual for a credential document")
+
+    # Count font references — excessive fonts may indicate text replacement
+    font_count = content.count(b"/Font")
+    if font_count > 15:
+        indicators.append(
+            f"PDF references {font_count} font objects — unusually high, "
+            f"may indicate text was replaced from multiple sources"
+        )
+
+    # Check for form overlay or layer patterns
+    if b"/Overlay" in content or b"/OCG" in content or b"/OCProperties" in content:
+        indicators.append("PDF contains optional content layers or overlays — may hide alterations")
+
+    # Check for multiple document revisions (incremental updates can hide changes)
+    eof_count = content.count(b"%%EOF")
+    if eof_count > 2:
+        indicators.append(
+            f"PDF has {eof_count} revision markers (%%EOF) — "
+            f"document was incrementally updated, which can conceal modifications"
+        )
+
+    return indicators
+
+
+# ── Layer 3: Gemini visual analysis (improved prompt) ─────────────────────────
+
+async def _gemini_visual_analysis(file_bytes: bytes, mime_type: str) -> dict:
+    """
+    Layer 3: Send document to Gemini for visual/semantic analysis.
+    Improved prompt with specific forensic questions.
     """
     prompt = """
-    You are a credential verification AI. Analyze this document and return a JSON object with:
+    You are a forensic document verification AI. Analyze this credential document image 
+    and return a JSON object with:
     {
       "extracted": {
         "holder_name": "full name on document",
@@ -358,13 +464,21 @@ async def ai_analyze_document(file_bytes: bytes, mime_type: str) -> dict:
       "notes": "any other observations"
     }
 
-    Fraud indicators to look for:
-    - Inconsistent fonts or font sizes
-    - Pixelation or blurring around text (sign of editing)
-    - Misaligned text blocks
-    - Unusual metadata inconsistencies
-    - Generic or suspicious institution names
-    - Date inconsistencies
+    Perform these specific checks:
+    1. VISUAL CONSISTENCY: Are fonts, sizes, and spacing uniform throughout? 
+       Flag any region where text appears to use a different font family or weight.
+    2. EDITING ARTIFACTS: Look for pixelation, blurring, or color inconsistencies 
+       around text blocks that may indicate cut-paste or digital editing.
+    3. ALIGNMENT: Are text blocks, seals, and signatures properly aligned 
+       with the document grid? Misalignment suggests manipulation.
+    4. SEAL/SIGNATURE QUALITY: Does the institutional seal appear authentic 
+       (proper resolution, consistent with surrounding elements)?
+    5. INSTITUTION VALIDATION: Is the institution name a real, recognizable 
+       educational institution? Flag generic or suspicious names.
+    6. DATE CONSISTENCY: Do dates make logical sense (issue date not in future, 
+       expiry after issue, dates consistent with institution's academic calendar)?
+    7. TEMPLATE AUTHENTICITY: Does the document design match typical credential 
+       formats (proper letterhead, borders, official formatting)?
 
     Respond with ONLY the JSON object, no markdown, no explanation.
     """
@@ -378,17 +492,65 @@ async def ai_analyze_document(file_bytes: bytes, mime_type: str) -> dict:
             raw = raw.split("```")[1]
             if raw.startswith("json"):
                 raw = raw[4:]
-        result = json.loads(raw.strip())
-        return result
+        return json.loads(raw.strip())
     except Exception as e:
-        # Fail gracefully — don't block credential issuance
         return {
             "extracted": {},
             "fraud_indicators": [],
             "confidence": None,
             "fraud_flag": False,
-            "notes": f"AI analysis failed: {str(e)}",
+            "notes": f"Gemini analysis failed: {str(e)}",
         }
+
+
+# ── Combined multi-layer analysis ─────────────────────────────────────────────
+
+async def ai_analyze_document(file_bytes: bytes, mime_type: str) -> dict:
+    """
+    Multi-layer fraud detection:
+      Layer 1: Metadata analysis (magic bytes, producer strings)
+      Layer 2: Structural PDF analysis (JS, fonts, overlays, revisions)
+      Layer 3: Gemini visual/semantic analysis
+    Returns combined result with composite confidence score.
+    """
+    # Layer 1: Metadata
+    metadata_flags = _analyze_metadata(file_bytes, mime_type)
+
+    # Layer 2: Structural (PDF only)
+    structural_flags = []
+    if mime_type == "application/pdf" or file_bytes[:4] == b"%PDF":
+        structural_flags = _analyze_pdf_structure(file_bytes)
+
+    # Layer 3: Gemini visual analysis
+    gemini_result = await _gemini_visual_analysis(file_bytes, mime_type)
+    gemini_flags = gemini_result.get("fraud_indicators", [])
+
+    # Combine all indicators
+    all_indicators = metadata_flags + structural_flags + gemini_flags
+
+    # Composite confidence score
+    base_confidence = gemini_result.get("confidence") or 0.5
+    # Each local indicator penalizes confidence more heavily than Gemini-only flags
+    local_penalty = len(metadata_flags) * 0.15 + len(structural_flags) * 0.12
+    gemini_penalty = len(gemini_flags) * 0.08
+    total_penalty = min(local_penalty + gemini_penalty, 0.7)
+    final_confidence = round(max(base_confidence - total_penalty, 0.0), 2)
+
+    # Flag if 2+ indicators from any source, or confidence drops below 0.5
+    fraud_flag = len(all_indicators) >= 2 or final_confidence < 0.5
+
+    return {
+        "extracted": gemini_result.get("extracted", {}),
+        "fraud_indicators": all_indicators,
+        "confidence": final_confidence,
+        "fraud_flag": fraud_flag,
+        "analysis_layers": {
+            "metadata": metadata_flags,
+            "structural": structural_flags,
+            "visual_ai": gemini_flags,
+        },
+        "notes": gemini_result.get("notes", ""),
+    }
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -743,23 +905,29 @@ async def wallet_login(body: WalletLoginRequest, db: AsyncSession = Depends(get_
     Institution login via MetaMask wallet signature.
     Frontend: sign a nonce message with MetaMask, send wallet_address + message + signature.
     """
+    # ── Nonce replay protection: verify the nonce was server-issued ──
+    try:
+        r = await get_redis()
+        stored_nonce = await r.get(f"nonce:{body.wallet_address.lower()}")
+        if not stored_nonce or stored_nonce != body.message:
+            raise HTTPException(401, "Invalid or expired nonce. Request a new one via /auth/nonce.")
+        # Delete immediately — one-time use
+        await r.delete(f"nonce:{body.wallet_address.lower()}")
+    except HTTPException:
+        raise
+    except Exception:
+        pass  # If Redis is down, fail open on nonce check
+
     if not verify_wallet_signature(body.wallet_address, body.message, body.signature):
         raise HTTPException(401, "Invalid wallet signature.")
 
     # Check if wallet is a registered issuer on-chain
     if not blockchain_is_registered_issuer(body.wallet_address):
-        if settings.APP_ENV == "development":
-            # Auto-register on local network for easy testing
-            try:
-                fn = issuer_contract.functions.registerIssuer(
-                    Web3.to_checksum_address(body.wallet_address),
-                    f"Auto-registered {body.wallet_address[:8]}"
-                )
-                _send_transaction(fn)
-            except Exception as e:
-                raise HTTPException(403, f"Auto-registration failed: {e}")
-        else:
-            raise HTTPException(403, "Wallet is not a registered issuer on-chain.")
+        raise HTTPException(
+            403,
+            "Wallet is not a registered issuer on-chain. "
+            "Contact the platform admin to whitelist your institution."
+        )
 
     result = await db.execute(select(User).where(User.wallet_address == body.wallet_address.lower()))
     user = result.scalar_one_or_none()
@@ -784,10 +952,57 @@ async def get_nonce(wallet_address: str):
     """
     Returns a message for the wallet to sign.
     Frontend calls this first, then passes result to MetaMask for signing.
+    Nonce is stored in Redis with a 5-minute TTL for replay protection.
     """
     nonce = secrets.token_hex(16)
     message = f"Sign in to CredVerify\nWallet: {wallet_address}\nNonce: {nonce}\nTimestamp: {datetime.utcnow().isoformat()}"
+    # Store in Redis keyed by wallet address — 5 min TTL, one-time use
+    try:
+        r = await get_redis()
+        await r.setex(f"nonce:{wallet_address.lower()}", 300, message)
+    except Exception:
+        pass  # Graceful degradation if Redis is unavailable
     return {"message": message}
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# ROUTES — ADMIN
+# ══════════════════════════════════════════════════════════════════════════════
+
+class RegisterIssuerRequest(BaseModel):
+    wallet_address: str
+    institution_name: str
+    admin_secret: str
+
+
+@app.post("/admin/register-issuer", tags=["Admin"])
+async def admin_register_issuer(body: RegisterIssuerRequest):
+    """
+    Register an institution wallet as a trusted issuer on-chain.
+    Protected by ADMIN_SECRET — only platform admin can call this.
+    Replaces the old dev auto-registration that was a security hole.
+    """
+    if not settings.ADMIN_SECRET or body.admin_secret != settings.ADMIN_SECRET:
+        raise HTTPException(403, "Invalid admin secret.")
+
+    # Check if already registered
+    if blockchain_is_registered_issuer(body.wallet_address):
+        return {"already_registered": True, "wallet": body.wallet_address}
+
+    try:
+        fn = issuer_contract.functions.registerIssuer(
+            Web3.to_checksum_address(body.wallet_address),
+            body.institution_name,
+        )
+        receipt = _send_transaction(fn)
+        return {
+            "registered": True,
+            "wallet": body.wallet_address,
+            "institution_name": body.institution_name,
+            "tx_hash": receipt["transactionHash"].hex(),
+        }
+    except Exception as e:
+        raise HTTPException(500, f"On-chain registration failed: {e}")
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -824,31 +1039,48 @@ async def issue_credential(
     result = await db.execute(select(User).where(User.id == uuid.UUID(current_user["sub"])))
     institution = result.scalar_one_or_none()
 
-    # 3. Hash document
-    doc_hash = compute_sha256(file_bytes)
+    # 3. Hash document (raw bytes for dedup)
+    file_hash = compute_sha256(file_bytes)
 
-    # 4. Check for duplicate
-    existing = await db.execute(select(Credential).where(Credential.document_hash == doc_hash))
+    # 4. Check for duplicate file upload
+    existing = await db.execute(select(Credential).where(Credential.file_hash == file_hash))
     if existing.scalar_one_or_none():
         raise HTTPException(409, "This exact document has already been issued.")
 
-    # 5. Upload to S3
-    s3_key = f"credentials/{institution.id}/{candidate.id}/{doc_hash[:16]}_{file.filename}"
-    await upload_to_s3(file_bytes, s3_key, file.content_type or "application/octet-stream")
+    # 5. Save file locally
+    file_key = f"credentials/{institution.id}/{candidate.id}/{file_hash[:16]}_{file.filename}"
+    await save_file_locally(file_bytes, file_key, file.content_type or "application/octet-stream")
 
     # 6. AI analysis
     ai_result = await ai_analyze_document(file_bytes, file.content_type or "image/jpeg")
 
-    # 7. Save credential to DB first (pending on-chain)
+    # 7. Compute canonical credential hash for on-chain anchoring
+    #    Uses semantic data so re-exported PDFs still verify correctly
+    parsed_issue_date = datetime.fromisoformat(issue_date).replace(tzinfo=None)
+    credential_hash = compute_credential_hash(
+        holder_name=candidate.name,
+        institution_name=institution.name,
+        credential_type=credential_type,
+        title=title,
+        issue_date=parsed_issue_date.strftime("%Y-%m-%d"),
+    )
+
+    # 8. Check for duplicate credential (same semantic data)
+    existing_cred = await db.execute(select(Credential).where(Credential.document_hash == credential_hash))
+    if existing_cred.scalar_one_or_none():
+        raise HTTPException(409, "A credential with identical details has already been issued.")
+
+    # 9. Save credential to DB first (pending on-chain)
     cred = Credential(
         institution_id=institution.id,
         candidate_id=candidate.id,
         credential_type=credential_type,
         title=title,
-        issue_date=datetime.fromisoformat(issue_date).replace(tzinfo=None),
+        issue_date=parsed_issue_date,
         expiry_date=datetime.fromisoformat(expiry_date).replace(tzinfo=None) if expiry_date else None,
-        s3_key=s3_key,
-        document_hash=doc_hash,
+        file_key=file_key,
+        document_hash=credential_hash,
+        file_hash=file_hash,
         ai_confidence=ai_result.get("confidence"),
         ai_fraud_flag=ai_result.get("fraud_flag", False),
         ai_extracted_data=json.dumps(ai_result),
@@ -858,17 +1090,17 @@ async def issue_credential(
     await db.flush()
     cred_id = str(cred.id)
 
-    # 8. Write to Polygon in background (non-blocking)
+    # 10. Write to Polygon in background (non-blocking)
     background_tasks.add_task(
         _write_to_blockchain,
         cred_id=cred_id,
-        doc_hash=doc_hash,
+        doc_hash=credential_hash,
         issuer_wallet=institution.wallet_address or backend_account.address,
     )
 
     return {
         "credential_id": cred_id,
-        "document_hash": doc_hash,
+        "document_hash": credential_hash,
         "on_chain": False,
         "on_chain_status": "pending — writing to Polygon in background",
         "ai_confidence": ai_result.get("confidence"),
@@ -965,7 +1197,7 @@ async def get_document_url(
     db: AsyncSession = Depends(get_db),
     current_user=Depends(require_any),
 ):
-    """Get a 1-hour presigned S3 URL for the credential document."""
+    """Get a URL for the credential document."""
     result = await db.execute(select(Credential).where(Credential.id == uuid.UUID(credential_id)))
     cred = result.scalar_one_or_none()
     if not cred:
@@ -975,8 +1207,8 @@ async def get_document_url(
     if current_user["role"] not in ("institution",) and cred.candidate_id != user_id:
         raise HTTPException(403, "Not authorized to access this document.")
 
-    url = get_presigned_url(cred.s3_key)
-    return {"url": url, "expires_in": 3600}
+    url = get_file_url(cred.file_key)
+    return {"url": url}
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -1162,6 +1394,59 @@ async def verify_by_hash(
 
     # Cache result
     await cache_verification_result(document_hash, verification)
+
+    log = VerificationLog(
+        credential_id=cred.id,
+        result=verification["result"],
+        chain_match=verification["chain_match"],
+        ai_confidence=cred.ai_confidence,
+        ip_address=request.client.host if request.client else None,
+    )
+    db.add(log)
+
+    return {
+        **verification,
+        "credential": _format_credential(cred, institution),
+    }
+
+
+
+@app.post("/verify/file", tags=["Verify"])
+async def verify_by_file(
+    request: Request,
+    file: UploadFile = File(...),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Verify a credential by uploading the original document file.
+    Computes the file's SHA-256 and looks it up via the file_hash column.
+    """
+    file_bytes = await file.read()
+    if len(file_bytes) > 10 * 1024 * 1024:
+        raise HTTPException(400, "File too large. Max 10MB.")
+
+    file_hash = compute_sha256(file_bytes)
+
+    # Look up by file_hash (raw file bytes hash)
+    result = await db.execute(
+        select(Credential, User)
+        .join(User, Credential.institution_id == User.id)
+        .where(Credential.file_hash == file_hash)
+    )
+    row = result.first()
+
+    if not row:
+        return {
+            "result": "mismatch",
+            "chain_match": False,
+            "in_database": False,
+            "is_revoked": False,
+            "verified_at": datetime.utcnow(),
+            "note": "No credential found matching this file.",
+        }
+
+    cred, institution = row
+    verification = await _run_verification(cred, db)
 
     log = VerificationLog(
         credential_id=cred.id,

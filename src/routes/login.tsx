@@ -45,7 +45,14 @@ function Login() {
       setAuth(r.access_token);
       navigate("/app");
     } catch (e: any) {
-      setErr(e.response?.data?.detail || e.message);
+      const detail = e.response?.data?.detail;
+      if (e.response?.status === 403) {
+        setErr("This wallet is not registered as a trusted institution. Contact the platform admin for approval.");
+      } else if (e.response?.status === 401) {
+        setErr(detail || "Signature expired or invalid. Please try again.");
+      } else {
+        setErr(detail || e.message);
+      }
     } finally {
       setLoading(false);
     }

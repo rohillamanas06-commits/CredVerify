@@ -29,11 +29,9 @@ function VerifyPage() {
         r = (await api.get(`/verify/hash/${encodeURIComponent(v)}`)).data;
       } else if (mode === "file") {
         if (!file) throw new Error("Please select a file to verify.");
-        const buffer = await file.arrayBuffer();
-        const hashBuffer = await crypto.subtle.digest("SHA-256", buffer);
-        const hashArray = Array.from(new Uint8Array(hashBuffer));
-        const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-        r = (await api.get(`/verify/hash/${encodeURIComponent(hashHex)}`)).data;
+        const fd = new FormData();
+        fd.append("file", file);
+        r = (await api.post("/verify/file", fd)).data;
       }
       setResult(r);
     } catch (e: any) { setErr(e.message); } finally { setLoading(false); }

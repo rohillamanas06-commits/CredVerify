@@ -20,10 +20,35 @@ export function VerifyResult({ data }: { data: any }) {
           {data.ai_confidence != null && (
             <Row k="AI confidence" v={`${Math.round(data.ai_confidence * 100)}%`} />
           )}
+          {data.ai_fraud_flag != null && (
+            <Row k="Fraud flag" v={data.ai_fraud_flag ? "⚠ Yes" : "✓ Clear"} />
+          )}
           {data.tx_hash && (
             <Row k="Tx hash" v={<span className="font-mono text-xs break-all">{data.tx_hash}</span>} />
           )}
         </div>
+        {data.fraud_indicators && data.fraud_indicators.length > 0 && (
+          <div className="mt-3 text-sm space-y-1 opacity-80">
+            <div className="text-xs uppercase tracking-widest opacity-70">Fraud indicators</div>
+            {data.analysis_layers ? (
+              <div className="space-y-1 text-xs">
+                {data.analysis_layers.metadata?.length > 0 && (
+                  <div><strong>Metadata:</strong> {data.analysis_layers.metadata.join("; ")}</div>
+                )}
+                {data.analysis_layers.structural?.length > 0 && (
+                  <div><strong>Structural:</strong> {data.analysis_layers.structural.join("; ")}</div>
+                )}
+                {data.analysis_layers.visual_ai?.length > 0 && (
+                  <div><strong>Visual AI:</strong> {data.analysis_layers.visual_ai.join("; ")}</div>
+                )}
+              </div>
+            ) : (
+              <ul className="text-xs list-disc list-inside">
+                {data.fraud_indicators.map((f: string, i: number) => <li key={i}>{f}</li>)}
+              </ul>
+            )}
+          </div>
+        )}
       </div>
 
       {cred && (
