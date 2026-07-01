@@ -24,7 +24,7 @@ from typing import Optional, Any
 # ── Web framework ──────────────────────────────────────────────────────────────
 from fastapi import (
     FastAPI, Depends, HTTPException, status,
-    UploadFile, File, Request, BackgroundTasks
+    UploadFile, File, Request, BackgroundTasks, Form
 )
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
@@ -328,7 +328,7 @@ def compute_sha256(file_bytes: bytes) -> str:
 # ══════════════════════════════════════════════════════════════════════════════
 
 genai.configure(api_key=settings.GEMINI_API_KEY)
-gemini_model = genai.GenerativeModel("gemini-1.5-flash")
+gemini_model = genai.GenerativeModel("gemini-1.5-flash-latest")
 
 
 async def ai_analyze_document(file_bytes: bytes, mime_type: str) -> dict:
@@ -719,7 +719,7 @@ async def register(body: RegisterRequest, db: AsyncSession = Depends(get_db)):
     db.add(user)
     await db.flush()
 
-    token = create_access_token({"sub": str(user.id), "role": body.role.value, "email": body.email})
+    token = create_access_token({"sub": str(user.id), "role": body.role.value, "email": user.email, "name": user.name})
     return TokenResponse(access_token=token, role=body.role.value, user_id=str(user.id))
 
 
@@ -733,7 +733,7 @@ async def login(body: LoginRequest, db: AsyncSession = Depends(get_db)):
     if not user.is_active:
         raise HTTPException(403, "Account disabled.")
 
-    token = create_access_token({"sub": str(user.id), "role": user.role.value, "email": user.email})
+    token = create_access_token({"sub": str(user.id), "role": user.role.value, "email": user.email, "name": user.name})
     return TokenResponse(access_token=token, role=user.role.value, user_id=str(user.id))
 
 
@@ -775,7 +775,7 @@ async def wallet_login(body: WalletLoginRequest, db: AsyncSession = Depends(get_
         db.add(user)
         await db.flush()
 
-    token = create_access_token({"sub": str(user.id), "role": "institution", "wallet": body.wallet_address})
+    token = create_access_token({"sub": str(user.id), "role": "institution", "wallet": body.wallet_address, "email": user.email, "name": user.name})
     return TokenResponse(access_token=token, role="institution", user_id=str(user.id))
 
 
@@ -797,12 +797,12 @@ async def get_nonce(wallet_address: str):
 @app.post("/credentials/issue", tags=["Credentials"])
 async def issue_credential(
     background_tasks: BackgroundTasks,
-    credential_type: str,
-    title: str,
-    issue_date: str,
-    candidate_email: str,
+    credential_type: str = Form(...),
+    title: str = Form(...),
+    issue_date: str = Form(...),
+    candidate_email: str = Form(...),
     file: UploadFile = File(...),
-    expiry_date: Optional[str] = None,
+    expiry_date: Optional[str] = Form(None),
     db: AsyncSession = Depends(get_db),
     current_user=Depends(require_institution),
 ):
@@ -845,8 +845,8 @@ async def issue_credential(
         candidate_id=candidate.id,
         credential_type=credential_type,
         title=title,
-        issue_date=datetime.fromisoformat(issue_date),
-        expiry_date=datetime.fromisoformat(expiry_date) if expiry_date else None,
+        issue_date=datetime.fromisoformat(issue_date).replace(tzinfo=None),
+        expiry_date=datetime.fromisoformat(expiry_date).replace(tzinfo=None) if expiry_date else None,
         s3_key=s3_key,
         document_hash=doc_hash,
         ai_confidence=ai_result.get("confidence"),

@@ -2,9 +2,6 @@ import axios from "axios";
 
 export const api = axios.create({
   baseURL: "/api",
-  headers: {
-    "Content-Type": "application/json",
-  },
 });
 
 api.interceptors.request.use(
@@ -33,6 +30,7 @@ api.interceptors.response.use(
 export interface AuthUser {
   sub: string;
   role: string;
+  name?: string;
   email?: string;
   wallet?: string;
 }

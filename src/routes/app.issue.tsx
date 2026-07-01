@@ -34,7 +34,7 @@ function IssuePage() {
   }
 
   return (
-    <div className="max-w-2xl space-y-6">
+    <div className="w-full space-y-6">
       <div>
         <h1 className="font-display text-3xl">Issue credential</h1>
         <p className="text-muted-foreground text-sm mt-1">
@@ -48,12 +48,15 @@ function IssuePage() {
         </Field>
         <div className="grid grid-cols-2 gap-4">
           <Field label="Credential type">
-            <select value={type} onChange={(e) => setType(e.target.value)} className="input">
-              <option>Degree</option>
-              <option>Diploma</option>
-              <option>Certificate</option>
-              <option>License</option>
-            </select>
+            <div className="relative">
+              <select value={type} onChange={(e) => setType(e.target.value)} className="input appearance-none pr-10">
+                <option>Degree</option>
+                <option>Diploma</option>
+                <option>Certificate</option>
+                <option>License</option>
+              </select>
+              <svg className="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 pointer-events-none text-muted-foreground" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+            </div>
           </Field>
           <Field label="Title">
             <input required value={title} onChange={(e) => setTitle(e.target.value)} className="input" placeholder="B.Tech Computer Science" />
