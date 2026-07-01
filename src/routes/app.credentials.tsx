@@ -29,7 +29,10 @@ function CredentialsPage() {
 
   async function viewDoc(id: string) {
     try {
-      const { url } = (await api.get(`/credentials/${id}/document`)).data;
+      let { url } = (await api.get(`/credentials/${id}/document`)).data;
+      if (url.startsWith("http://localhost:8000") && import.meta.env.VITE_API_URL) {
+        url = url.replace("http://localhost:8000", import.meta.env.VITE_API_URL);
+      }
       window.open(url, "_blank");
     } catch (e: any) { alert(e.message); }
   }
