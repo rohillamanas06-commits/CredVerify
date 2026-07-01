@@ -13,6 +13,11 @@ function Overview() {
 
   useEffect(() => {
     if (!user) return;
+    if (user.role === "employer") {
+      setRecent([]);
+      setStats({ total: 0, verified: 0, flagged: 0 });
+      return;
+    }
     const loader =
       user.role === "institution" ? api.get("/credentials/issued").then(r => r.data) : api.get("/credentials/mine").then(r => r.data);
     loader

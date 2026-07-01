@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 export function Footer() {
   return (
     <footer className="bg-black text-white/70 border-t border-white/10 pt-8 pb-8">
-      <div className="w-full px-4 md:px-8 mx-auto grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-12">
+      <div className="w-full pl-8 pr-4 md:pl-16 md:pr-8 mx-auto grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-12">
         <div className="lg:col-span-1 max-w-xs">
           <div className="font-display text-white text-2xl mb-4">CredChain</div>
           <p className="text-sm text-white/60 mb-6">

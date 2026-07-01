@@ -14,6 +14,10 @@ function CredentialsPage() {
 
   function load() {
     if (!user) return;
+    if (user.role === "employer") {
+      setItems([]);
+      return;
+    }
     const p = user.role === "institution" ? api.get("/credentials/issued").then(r => r.data) : api.get("/credentials/mine").then(r => r.data);
     p.then(setItems).catch((e) => setErr(e.message));
   }

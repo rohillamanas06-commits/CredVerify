@@ -49,7 +49,7 @@ function AppLayout() {
   const nav: { to: string; label: string; roles?: string[] }[] = [
     { to: "/", label: "Home" },
     { to: "/app", label: "Overview" },
-    { to: "/app/credentials", label: "Credentials" },
+    { to: "/app/credentials", label: "Credentials", roles: ["institution", "candidate"] },
     { to: "/app/issue", label: "Issue", roles: ["institution"] },
     { to: "/app/share", label: "Share links", roles: ["candidate"] },
     { to: "/app/verify", label: "Verify" },
