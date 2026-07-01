@@ -56,7 +56,7 @@ function AppLayout() {
   ];
 
   return (
-    <div className="min-h-screen bg-background flex flex-col">
+    <div className="min-h-[100dvh] bg-background flex flex-col">
       <header className="sticky top-0 z-40 bg-black text-white border-b border-white/10">
         <div className="w-full px-4 md:px-8 flex h-14 items-center justify-between">
           <div className="flex items-center gap-4">
@@ -85,7 +85,7 @@ function AppLayout() {
 
       <div className="flex-1 flex flex-col md:flex-row w-full">
         <aside 
-          className={`border-border bg-background shrink-0 transition-all duration-300 ease-in-out overflow-hidden z-30 fixed md:sticky top-14 h-[calc(100vh-3.5rem)] ${
+          className={`border-border bg-background shrink-0 transition-all duration-300 ease-in-out overflow-hidden z-30 fixed md:sticky top-14 h-[calc(100dvh-3.5rem)] ${
             isSidebarOpen 
               ? "w-64 border-r opacity-100 shadow-2xl md:shadow-none" 
               : "w-0 border-none opacity-0"
@@ -104,6 +104,11 @@ function AppLayout() {
                     <Link
                       key={n.to}
                       to={n.to}
+                      onClick={() => {
+                        if (window.innerWidth < 768) {
+                          setIsSidebarOpen(false);
+                        }
+                      }}
                       className={`px-3 py-2 rounded-md whitespace-nowrap transition ${
                         active
                           ? "bg-foreground text-background"
