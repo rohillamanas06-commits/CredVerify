@@ -306,8 +306,7 @@ async def save_file_locally(file_bytes: bytes, key: str, content_type: str) -> s
 def get_file_url(key: str) -> str:
     """Return a URL to access a locally stored file."""
     safe_key = key.replace("/", "_")
-    base_url = "https://cred-chain-verify.vercel.app" if settings.APP_ENV == "production" else "http://localhost:8000"
-    return f"{base_url}/uploads/{safe_key}"
+    return f"http://localhost:8000/uploads/{safe_key}"
 
 
 
