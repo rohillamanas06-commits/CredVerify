@@ -55,8 +55,8 @@ function Overview() {
           {user?.role === "institution"
             ? "Issue and manage credentials anchored on Polygon."
             : user?.role === "employer"
-            ? "Verify candidates' credentials via share links or document hash."
-            : "Hold, share, and verify your credentials."}
+              ? "Verify candidates' credentials via share links or document hash."
+              : "Hold, share, and verify your credentials."}
         </p>
       </div>
 
@@ -65,7 +65,7 @@ function Overview() {
       {user?.role !== "employer" && (
         <div className="grid grid-cols-3 gap-4">
           <Stat label="Total" value={stats?.total ?? "—"} />
-          <Stat label="Verified on-chain" value={stats?.verified ?? "—"} />
+          <Stat label="Verified" value={stats?.verified ?? "—"} />
           <Stat label="Flagged" value={stats?.flagged ?? "—"} />
         </div>
       )}
@@ -129,10 +129,10 @@ export function StatusBadge({ cred }: { cred: any }) {
   const cls = revoked
     ? "bg-red-500/20 text-red-400 border border-red-500/30"
     : flagged
-    ? "bg-yellow-500/20 text-yellow-400 border border-yellow-500/30"
-    : onChain
-    ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30"
-    : "bg-white/10 text-white/70 border border-white/20";
+      ? "bg-yellow-500/20 text-yellow-400 border border-yellow-500/30"
+      : onChain
+        ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30"
+        : "bg-white/10 text-white/70 border border-white/20";
   const label = revoked ? "Revoked" : flagged ? "Flagged" : onChain ? "On-chain" : "Pending";
   return <span className={`text-xs font-medium px-2.5 py-0.5 rounded-full ${cls}`}>{label}</span>;
 }
