@@ -18,7 +18,7 @@ function AppLayout() {
   const navigate = useNavigate();
   const location = useLocation();
   const pathname = location.pathname;
-  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(() => typeof window !== 'undefined' ? window.innerWidth >= 768 : true);
   const [isDark, setIsDark] = useState(() => document.documentElement.classList.contains("dark"));
 
   const toggleTheme = () => {
