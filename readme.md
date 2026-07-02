@@ -6,6 +6,17 @@ CredChain is a full-stack platform (FastAPI backend + React frontend) for issuin
 
 ---
 
+## 📸 Screenshots
+
+![](public/Screenshot%202026-07-02%20094015.png)
+![](public/Screenshot%202026-07-02%20094050.png)
+![](public/Screenshot%202026-07-02%20094224.png)
+![](public/Screenshot%202026-07-02%20094128.png)
+![](public/Screenshot%202026-07-02%20094140.png)
+
+
+---
+
 ## 🌟 Key Features
 
 * **Wallet Authentication:** Password-less login for institutions via MetaMask (`personal_sign`), backed by single-use, Redis-stored nonces to prevent signature replay.
